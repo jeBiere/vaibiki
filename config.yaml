@@ -1,0 +1,28 @@
+avg_window_size: 8
+bar_count: 100
+clock:
+  color: '#FFFFFF'
+  enabled: true
+  font_family: Helvetica
+  font_size_ratio: 0.2
+  font_weight: bold
+  format:
+    hours: hh
+    minutes: mm
+  line_spacing: 1.0
+  opacity: 220
+  vertical_offset: 10
+exp_smooth_factor: 0.8
+max_change_speed: 0.5
+noise_floor: 0.1
+overlay_image: assets/new.png
+peak_sharpness: 4
+visualizer:
+  font_size_ratio: 0.2
+  gradient_end: '#F0B781'
+  gradient_start: '#DE726E'
+  height: 344
+  shift_y: 50
+  width: 1788
+  x: 822
+  y: 170

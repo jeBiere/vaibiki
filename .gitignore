@@ -4,7 +4,6 @@ __pycache__/
 *.pyd
 .env
 assets/
-config.yaml
 .DS_Store
 .idea/
 .vscode/
