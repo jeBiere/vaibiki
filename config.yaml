@@ -1,4 +1,4 @@
-avg_window_size: 8
+avg_window_size: 5
 bar_count: 100
 clock:
   color: '#FFFFFF'
@@ -12,11 +12,11 @@ clock:
   line_spacing: 1.0
   opacity: 220
   vertical_offset: 10
-exp_smooth_factor: 0.8
-max_change_speed: 0.5
-noise_floor: 0.1
+exp_smooth_factor: 0.3
+max_change_speed: 0.15
+noise_floor: 0.05
 overlay_image: assets/new.png
-peak_sharpness: 4
+peak_sharpness: 1.5
 visualizer:
   font_size_ratio: 0.2
   gradient_end: '#F0B781'
