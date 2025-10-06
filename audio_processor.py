@@ -17,8 +17,8 @@ class AudioProcessor:
             self.fft_history.append(np.zeros(self.bar_count))
 
         # Параметры FFT
-        self.raw_fft_size = 512
-        self.freq_crop_size = 100
+        self.raw_fft_size = 100
+        self.freq_crop_size = 50
 
     def audio_callback(self, indata, frames, time, status):
         if status:
