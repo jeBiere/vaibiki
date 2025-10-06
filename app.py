@@ -43,7 +43,7 @@ class AudioVisualizer(QWidget):
         )
 
     def _init_components(self):
-        self.audio_processor = AudioProcessor(self.config)
+        self.audio_processor = AudioProcessor()
         self.visualization = Visualization(self.config)
         self.clock = ClockWidget(self.config)
         self.overlay = Overlay(self.config, self.size())
