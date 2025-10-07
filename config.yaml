@@ -13,10 +13,14 @@ clock:
   opacity: 220
   vertical_offset: 10
 exp_smooth_factor: 0.3
-max_change_speed: 0.15
-noise_floor: 0.05
+max_change_speed: 0.6
+noise_floor: 0.02
+overlay_enabled: true 
 overlay_image: assets/new.png
-peak_sharpness: 1.5
+peak_sharpness: 2
+accent_threshold: 5
+accent_boost: 5
+visualization_mode: bass_center  # или bass_center, bass_edges
 visualizer:
   font_size_ratio: 0.2
   gradient_end: '#F0B781'

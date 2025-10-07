@@ -3,13 +3,7 @@
 AudioProcessor — realtime audio -> визуальные полосы (bar_count)
 Реализация использует librosa.cqt (Constant-Q Transform), возвращая
 массив amplitudes в диапазоне [0..1] готовый к отрисовке.
-
-API:
-    p = AudioProcessor(bar_count=64, samplerate=44100, ...)
-    # в аудио-callback:
-    p.audio_callback(indata, frames, time, status)
-    # в GUI:
-    bars = p.get_fft_data()  # numpy array shape (bar_count,)
+С детектором акцентов для реакции только на выраженные звуки.
 """
 
 from collections import deque
@@ -31,11 +25,13 @@ class AudioProcessor:
         noise_floor: float = 0.02,
         peak_sharpness: float = 1.4,
         avg_window_size: int = 5,
-        visualization_mode: str = "linear",  # "linear" | "bass_center" | "bass_edges"
+        visualization_mode: str = "linear",
         fmin: float = 100.0,
         fmax: float = 6000.0,
-        cqt_bins_per_bar: int = 3,  # internal resolution: how many CQT bins per output bar
-        bins_per_octave: int = 12,  # semitone resolution
+        cqt_bins_per_bar: int = 3,
+        bins_per_octave: int = 12,
+        accent_threshold: float = 1.8,  # Множитель для детекции акцента
+        accent_boost: float = 2.0,       # Насколько усиливать акценты
     ):
         # параметры интерфейса
         self.bar_count = int(bar_count)
@@ -59,6 +55,13 @@ class AudioProcessor:
         self.bins_per_octave = int(bins_per_octave)
         self.cqt_bins_per_bar = int(max(1, cqt_bins_per_bar))
 
+        # ПАРАМЕТРЫ ДЕТЕКТОРА АКЦЕНТОВ
+        self.accent_threshold = float(accent_threshold)
+        self.accent_boost = float(accent_boost)
+        self.energy_history = deque(maxlen=20)
+        self.last_accent_time = 0
+        self.accent_cooldown = 5  # Минимум 5 кадров между акцентами
+
         # внутренние структуры
         self.fft_data = np.zeros(self.bar_count, dtype=float)
         self.fft_history = deque(maxlen=self.avg_window_size)
@@ -69,70 +72,70 @@ class AudioProcessor:
         self.audio_buffer = np.zeros(0, dtype=float)
         self.buffer_size = self.blocksize * self.buffer_blocks
 
-        # precompute CQT config (n_bins)
-        # выберем количество октав, покрывающих fmin..fmax
+        # precompute CQT config
         if self.fmax <= self.fmin:
             raise ValueError("fmax must be greater than fmin")
         self.n_octaves = math.ceil(math.log(self.fmax / self.fmin, 2.0))
-        # n_bins — внутреннее разрешение CQT
         self.cqt_n_bins = max(self.bar_count * self.cqt_bins_per_bar, self.bins_per_octave * self.n_octaves)
-        # округлим вверх до целого
         self.cqt_n_bins = int(self.cqt_n_bins)
-
-        # hop length — сколько сэмплов между вычислениями CQT.
-        # Для реалтайма выгодно не делать hop слишком маленьким.
-        # Подбор: блокsize примерно = 1024 -> hop_length = 512 (или blocksize // 2)
         self.hop_length = max(256, self.blocksize // 2)
 
-        # блокировка для потокобезопасного чтения/записи fft_data
+        # блокировка для потокобезопасности
         self._lock = threading.Lock()
-
-        # безопасный флаг для отключения повторных вызовов CQT если библиотека выдает предупреждения
         self._warned_cqt = False
+        self._frame_counter = 0
 
     def audio_callback(self, indata, frames, time, status):
-        """
-        Ожидаемый вход: indata — numpy array shape (frames, channels)
-        Эта функция должна вызываться из аудио-callback (например, sounddevice).
-        """
         if status:
-            # не ломаем поток — просто логируем
             try:
                 print(f"Audio status: {status}")
             except Exception:
                 pass
 
-        # ожидаем моно (берём первый канал) — если стерео, берём среднее
+        self._frame_counter += 1
+
+        # моно конверсия
         if indata.ndim == 1:
             audio_chunk = indata.astype(float)
         else:
-            # безопасное снижение до моно: среднее двух каналов
             audio_chunk = np.mean(indata, axis=1).astype(float)
 
-        # аккумулируем в буфер
+        # ДЕТЕКТОР ОБЩЕЙ ЭНЕРГИИ (для акцентов)
+        current_energy = np.sqrt(np.mean(audio_chunk ** 2))
+        self.energy_history.append(current_energy)
+        avg_energy = np.mean(self.energy_history) if len(self.energy_history) > 0 else 0.01
+        
+        # Детекция акцента: текущая энергия >> средней
+        is_accent = False
+        accent_multiplier = 1.0  # Множитель для усиления при акценте
+        
+        if current_energy > avg_energy * self.accent_threshold:
+            if self._frame_counter - self.last_accent_time > self.accent_cooldown:
+                is_accent = True
+                self.last_accent_time = self._frame_counter
+                # Вычисляем насколько сильный акцент (1.0 до accent_boost)
+                accent_strength = min((current_energy / avg_energy) / self.accent_threshold, 3.0)
+                accent_multiplier = 1.0 + (self.accent_boost - 1.0) * accent_strength
+
+        # аккумуляция буфера
         self.audio_buffer = np.concatenate([self.audio_buffer, audio_chunk])
 
-        # если буфер не набрался — всё ещё можно делать анализ по тому что есть
         if len(self.audio_buffer) < max(self.buffer_size, self.blocksize):
             analysis_data = self.audio_buffer.copy()
         else:
             analysis_data = self.audio_buffer[-self.buffer_size:].copy()
-            # сохраняем последние buffer_size, чтобы не расти без конца
             self.audio_buffer = self.audio_buffer[-self.buffer_size:]
 
-        # если сигнал очень короткий — pad zeros (librosa требует минимум окон)
         if len(analysis_data) < 16:
             analysis_data = np.pad(analysis_data, (0, 16 - len(analysis_data)), mode="constant")
 
-        # нормализуем немного уровень для численной стабильности
+        # нормализация
         if np.max(np.abs(analysis_data)) > 0:
             analysis_data = analysis_data / (np.max(np.abs(analysis_data)) + 1e-9)
 
-        # вычисляем CQT (мощность)
+        # CQT вычисление
         try:
-            # гарантируем, что fmax не превышает Nyquist (sr / 2)
             safe_fmax = min(self.fmax, self.samplerate / 2 - 100)
-            # пересчитаем допустимое количество бинов
             n_octaves = math.log2(safe_fmax / self.fmin)
             safe_bins = int(self.bins_per_octave * n_octaves)
 
@@ -145,41 +148,27 @@ class AudioProcessor:
                 bins_per_octave=self.bins_per_octave,
                 filter_scale=1.0
             )
+            
             if cqt.size == 0 or np.allclose(cqt, 0):
-            # если librosa не успела вернуть спектр, просто пропускаем кадр
                 return
 
-            # cqt.shape -> (n_bins, n_frames). Берём последний кадр (самый свежий)
             if cqt.ndim == 2 and cqt.shape[1] > 0:
                 cqt_frame = np.abs(cqt[:, -1])
             else:
                 cqt_frame = np.abs(cqt).reshape(-1)
+                
         except Exception as e:
-            # Если CQT упал — предупреждаем один раз и откатываемся к STFT
             if not self._warned_cqt:
-                warnings.warn(f"librosa.cqt failed, falling back to stft: {e}")
+                warnings.warn(f"librosa.cqt failed: {e}")
                 self._warned_cqt = True
-            try:
-                n_fft = max(32, min(len(analysis_data) // 2, 512))
-                S = np.abs(librosa.stft(analysis_data, n_fft=n_fft, hop_length=max(16, n_fft // 4)))
-                # Возьмём среднюю по частотам, затем ресайз в нужный размер
-                freqs = librosa.fft_frequencies(sr=self.samplerate, n_fft=2048)
-                # map freqs to log positions and then to bars
-                cqt_frame = np.mean(S, axis=1)
-            except Exception as e2:
-                # полностью не получилось — возвращаем нули
-                print(f"AudioProcessor fallback error: {e2}")
-                cqt_frame = np.zeros(self.cqt_n_bins, dtype=float)
+            cqt_frame = np.zeros(self.cqt_n_bins, dtype=float)
 
-        # преобразуем мощность в dB-подобную меру (в пределах) — затем нормализуем и агрегируем в полосы
-        # избегаем отрицательных/inf значений
-        # добавляем eps для безопасности
+        # преобразование в dB и нормализация
         eps = 1e-10
         cqt_power = cqt_frame ** 2
         cqt_db = librosa.power_to_db(cqt_power, ref=np.max, top_db=80.0)
-        # теперь нормируем 0..1 across this frame
+        
         if np.isfinite(cqt_db).any():
-            # shift to make min 0
             cmin = np.nanmin(cqt_db)
             cmax = np.nanmax(cqt_db)
             if cmax > cmin:
@@ -189,58 +178,55 @@ class AudioProcessor:
         else:
             normalized_bins = np.zeros_like(cqt_db)
 
-        # агрегируем bins -> bar_count
-        # равномерно разбиваем индексную ось cqt_bins -> баров (по порядку частот)
-        # используем linear grouping — для CQT это примерно логарифмически-распределённые бины, но
-        # мы просто суммируем соседние для получения нужного количества полос.
+        # агрегация bins -> bars
         total_bins = normalized_bins.shape[0]
         if total_bins < self.bar_count:
-            # ападим нулями если мало
             padded = np.pad(normalized_bins, (0, self.bar_count - total_bins), mode="constant")
             grouped = padded[:self.bar_count]
         else:
-            # делаем среднее по группам
-            # вычисляем индексы границ
             idx = np.linspace(0, total_bins, num=self.bar_count + 1, dtype=int)
             grouped = np.zeros(self.bar_count, dtype=float)
             for i in range(self.bar_count):
                 a, b = idx[i], idx[i+1]
                 if b > a:
                     grouped[i] = np.mean(normalized_bins[a:b])
-                else:
-                    grouped[i] = 0.0
 
-        # усиление пиков (контраст)
-        boosted = np.power(grouped, self.peak_sharpness)
-        new_data = np.sqrt(boosted)  # небольшая компрессия
+        # УСИЛЕННЫЙ noise floor - убираем гул
+        grouped[grouped < self.noise_floor * 2] = 0.0
 
-        # применение режимов визуализации
+        # Если акцент - усиливаем сигнал
+        if is_accent:
+            grouped = grouped * self.accent_boost
+            grouped = np.clip(grouped, 0, 1.0)
+
+        # усиление пиков (контраст) - УВЕЛИЧЕН для чёткости
+        boosted = np.power(grouped, self.peak_sharpness * 1.5)
+        new_data = np.sqrt(boosted)
+
+        # режимы визуализации
         if self.visualization_mode == "bass_center":
             new_data = self._apply_bass_center(new_data)
         elif self.visualization_mode == "bass_edges":
             new_data = self._apply_bass_edges(new_data)
 
-        # экспоненциальное сглаживание + ограничение скорости изменения
+        # сглаживание
         with self._lock:
             smoothed = (1 - self.exp_smooth_factor) * self.fft_data + self.exp_smooth_factor * new_data
             delta = np.clip(smoothed - self.fft_data, -self.max_change_speed, self.max_change_speed)
             updated = self.fft_data + delta
 
-            # скользящая усредняющая история
             self.fft_history.append(updated)
             averaged = np.mean(self.fft_history, axis=0)
 
-            # адаптивная нормализация по истории максимумов (устойчивость к громкости)
+            # адаптивная нормализация
             max_val = np.max(averaged) if np.max(averaged) > 0 else 0.0
             self.max_history.append(max_val + 1e-9)
-            # используем 85-й перцентиль истории (устойчив к выбросам)
             historical_scale = np.percentile(self.max_history, 85) if len(self.max_history) > 0 else 1.0
             if historical_scale > 0.2:
                 averaged = averaged / historical_scale
 
-            # удаляем шумы
-            averaged[averaged < self.noise_floor] = 0.0
-            # окончательная клипировка
+            # УСИЛЕННОЕ удаление шумов
+            averaged[averaged < self.noise_floor * 1.5] = 0.0
             averaged = np.clip(averaged, 0.0, 1.0)
 
             self.fft_data = averaged
@@ -254,7 +240,6 @@ class AudioProcessor:
         left = remaining[::-1]
         right = remaining
         result = np.concatenate([left, bass_data, right])
-        # корректируем длину
         if result.size < self.bar_count:
             result = np.pad(result, (0, self.bar_count - result.size), mode="constant")
         return result[:self.bar_count]

@@ -43,10 +43,34 @@ class AudioVisualizer(QWidget):
         )
 
     def _init_components(self):
-        self.audio_processor = AudioProcessor()
+        # В методе _init_components заменить создание AudioProcessor на:
+        self.audio_processor = AudioProcessor(
+            bar_count=self.config.get("bar_count", 100),
+            samplerate=self.config.get("samplerate", 44100),
+            blocksize=self.config.get("blocksize", 1024),
+            buffer_blocks=self.config.get("buffer_blocks", 32),
+            exp_smooth_factor=self.config.get("exp_smooth_factor", 0.4),
+            max_change_speed=self.config.get("max_change_speed", 0.5),
+            noise_floor=self.config.get("noise_floor", 0.02),
+            peak_sharpness=self.config.get("peak_sharpness", 1.4),
+            avg_window_size=self.config.get("avg_window_size", 5),
+            visualization_mode=self.config.get("visualization_mode", "linear"),
+            fmin=self.config.get("fmin", 100.0),
+            fmax=self.config.get("fmax", 6000.0),
+            cqt_bins_per_bar=self.config.get("cqt_bins_per_bar", 3),
+            bins_per_octave=self.config.get("bins_per_octave", 12),
+            accent_threshold=self.config.get("accent_threshold", 1.8),  # ДОБАВИТЬ
+            accent_boost=self.config.get("accent_boost", 2.0)           # ДОБАВИТЬ
+        )
+                
         self.visualization = Visualization(self.config)
         self.clock = ClockWidget(self.config)
-        self.overlay = Overlay(self.config, self.size())
+        
+        # ДОБАВЛЕНО: возможность отключить оверлей
+        if self.config.get("overlay_enabled", True):
+            self.overlay = Overlay(self.config, self.size())
+        else:
+            self.overlay = None
 
     def _start_audio_stream(self):
         self.stream = sd.InputStream(
@@ -67,8 +91,11 @@ class AudioVisualizer(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
 
         fft_data = self.audio_processor.get_fft_data()
-        self.visualization.fft_data = fft_data  # лучше: self.visualization.set_fft_data(fft_data)
+        self.visualization.fft_data = fft_data
 
         self.visualization.paint(painter, self.size())
         self.clock.paint(painter, self.size())
-        self.overlay.paint(painter, self.size())
+        
+        # ИСПРАВЛЕНО: рисуем оверлей только если он включён
+        if self.overlay is not None:
+            self.overlay.paint(painter, self.size())
