@@ -58,9 +58,13 @@ class OverlayManager:
         with self.config_path.open("r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
-        config["overlay_image"] = str(Path("assets") / filename).replace("\\", "/")
+        overlay = config.get("overlay") or {}
+        overlay["image"] = str(Path("assets") / filename).replace("\\", "/")
+        overlay.setdefault("enabled", True)
+        overlay.setdefault("scale_mode", "fill")
+        config["overlay"] = overlay
 
         with self.config_path.open("w", encoding="utf-8") as f:
             yaml.dump(config, f, allow_unicode=True)
 
-        print(f"✔ Конфигурация обновлена: overlay_image -> {config['overlay_image']}")
+        print(f"✔ Конфигурация обновлена: overlay.image -> {overlay['image']}")

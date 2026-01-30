@@ -37,7 +37,7 @@
 
 - Полноэкранный режим без рамки, поверх рабочего стола (опционально под другими окнами).
 - Запуск с аргументами командной строки для быстрого переключения оверлея:
-- Пока работает только на X11
+- Поддержка Wayland/Hyprland (экспериментально) через backend `wayland` и layer-shell.
 
 ## Использование 
 `python main.py`
@@ -45,3 +45,24 @@
 
 `python main.py --overlay images/logo.png`
 Для запуска с передачей нового изображение для оверлея.
+
+`python main.py --configurator`
+Запуск GUI-конфигуратора с превью и редактированием `config.yaml`.
+
+`python main.py --backend wayland --wayland-layer background`
+Запуск с явным выбором Wayland backend и слоя.
+
+Примечание: layer-shell требует Qt Wayland plugin. Если Wayland недоступен, используется fallback на X11.
+
+## Конфиг
+
+Основные параметры находятся в `config.yaml` (visualizer/clock/overlay/audio/platform).
+GUI конфигуратора сохраняет изменения автоматически.
+
+Backend аудио:
+- `audio.backend: internal` — обновленный встроенный пайплайн (v2).
+- `audio.backend: glava` — экспериментальный режим с glava-стилем эквализации.
+
+## Пресеты
+
+GUI умеет сохранять наборы настроек в `presets/*.yaml`.

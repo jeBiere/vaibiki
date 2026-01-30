@@ -5,7 +5,7 @@ class Visualization:
     def __init__(self, config):
         vis_conf = config["visualizer"]
 
-        self.bar_count = config["bar_count"]
+        self.bar_count = config["audio"]["bar_count"]
         self.gradient_start = QColor(vis_conf["gradient_start"])
         self.gradient_end = QColor(vis_conf["gradient_end"])
         self.shift_y = vis_conf["shift_y"]

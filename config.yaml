@@ -1,32 +1,52 @@
-avg_window_size: 5
-bar_count: 100
+visualizer:
+  x: 822
+  y: 170
+  width: 1788
+  height: 344
+  shift_y: 50
+  gradient_start: '#DE726E'
+  gradient_end: '#F0B781'
+
 clock:
-  color: '#FFFFFF'
   enabled: true
+  color: '#FFFFFF'
+  opacity: 220
   font_family: Helvetica
   font_size_ratio: 0.2
   font_weight: bold
+  line_spacing: 1.0
+  vertical_offset: 10
   format:
     hours: hh
     minutes: mm
-  line_spacing: 1.0
-  opacity: 220
-  vertical_offset: 10
-exp_smooth_factor: 0.3
-max_change_speed: 0.6
-noise_floor: 0.02
-overlay_enabled: true 
-overlay_image: assets/new.png
-peak_sharpness: 2
-accent_threshold: 5
-accent_boost: 5
-visualization_mode: bass_center  # или bass_center, bass_edges
-visualizer:
-  font_size_ratio: 0.2
-  gradient_end: '#F0B781'
-  gradient_start: '#DE726E'
-  height: 344
-  shift_y: 50
-  width: 1788
-  x: 822
-  y: 170
+
+overlay:
+  enabled: true
+  image: assets/new.png
+  scale_mode: fill
+
+audio:
+  bar_count: 100
+  samplerate: 44100
+  blocksize: 1024
+  buffer_blocks: 32
+  exp_smooth_factor: 0.3
+  max_change_speed: 0.6
+  noise_floor: 0.02
+  peak_sharpness: 2
+  avg_window_size: 5
+  visualization_mode: bass_center
+  fmin: 100.0
+  fmax: 6000.0
+  cqt_bins_per_bar: 3
+  bins_per_octave: 12
+  accent_threshold: 5
+  accent_boost: 5
+  backend: internal
+
+platform:
+  backend: auto
+  wayland_layer: background
+
+preview:
+  mode: fake
